@@ -1,176 +1,270 @@
-class Game {
+// ==========================================
+// AUDIO SYNTHESIS ENGINE
+// ==========================================
+class AudioManager {
     constructor() {
-        this.stage = document.getElementById('stage');
-        this.scoreEl = document.getElementById('score');
-        this.livesEl = document.getElementById('lives-board');
-        this.finalScoreEl = document.getElementById('final-score');
-        
-        this.score = 0;
-        this.lives = 5;
-        this.gameActive = false;
-        this.bubbles = [];
-        this.spawnRate = 1200; // ms
-        this.speedMultiplier = 1;
-        this.lastSpawn = 0;
-
-        // Colors and Shapes
-        this.colors = ['#ff85a1', '#fbb1bd', '#f7cad0', '#ff99ac', '#ff4d6d', '#ffb703', '#80ed99'];
-        this.shapes = ['shape-circle', 'shape-oval', 'shape-rounded'];
-
-        this.init();
+        this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+        this.musicPlaying = false;
+        this.musicTimeout = null;
+        this.melody = [523.25, 659.25, 783.99, 1046.50, 783.99, 659.25, 523.25, 587.33, 659.25, 783.99]; 
+        this.noteIndex = 0;
     }
 
     init() {
-        document.getElementById('start-btn').addEventListener('click', () => this.startGame());
-        document.getElementById('restart-btn').addEventListener('click', () => this.startGame());
-        window.requestAnimationFrame((time) => this.update(time));
+        if (this.ctx.state === 'suspended') {
+            this.ctx.resume();
+        }
+    }
+
+    playPop() {
+        if (!this.ctx) return;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(800, this.ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(300, this.ctx.currentTime + 0.1);
+        
+        gain.gain.setValueAtTime(0.3, this.ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.1);
+        
+        osc.start();
+        osc.stop(this.ctx.currentTime + 0.1);
+    }
+
+    playGameOver() {
+        if (!this.ctx) return;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(200, this.ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(50, this.ctx.currentTime + 0.5);
+        
+        gain.gain.setValueAtTime(0.3, this.ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.5);
+        
+        osc.start();
+        osc.stop(this.ctx.currentTime + 0.5);
+    }
+
+    startMusic() {
+        this.init();
+        if (this.musicPlaying) return;
+        this.musicPlaying = true;
+        this.playNextNote();
+    }
+
+    playNextNote() {
+        if (!this.musicPlaying) return;
+        
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        
+        osc.type = 'sine'; 
+        osc.frequency.value = this.melody[this.noteIndex];
+        
+        gain.gain.setValueAtTime(0, this.ctx.currentTime);
+        gain.gain.linearRampToValueAtTime(0.03, this.ctx.currentTime + 0.05); 
+        gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.3);
+        
+        osc.start(this.ctx.currentTime);
+        osc.stop(this.ctx.currentTime + 0.3);
+        
+        this.noteIndex = (this.noteIndex + 1) % this.melody.length;
+        this.musicTimeout = setTimeout(() => this.playNextNote(), 250);
+    }
+
+    stopMusic() {
+        this.musicPlaying = false;
+        clearTimeout(this.musicTimeout);
+    }
+}
+
+// ==========================================
+// GAME ENGINE
+// ==========================================
+class CandyBubbleGame {
+    constructor() {
+        this.stage = document.getElementById('stage');
+        this.uiScore = document.getElementById('val-score');
+        this.uiLevel = document.getElementById('val-level');
+        this.uiMissed = document.getElementById('val-missed');
+        this.startScreen = document.getElementById('start-screen');
+        this.gameOverScreen = document.getElementById('game-over-screen');
+        this.finalScore = document.getElementById('val-final-score');
+
+        this.score = 0;
+        this.missed = 0;
+        this.level = 1;
+        this.maxMisses = 5;
+        this.isRunning = false;
+        this.bubbles = [];
+        
+        this.spawnTimer = 0;
+        this.spawnInterval = 1000; 
+        this.baseSpeed = 0.2; 
+        
+        this.colors = ['#ff0a54', '#8338ec', '#ffb703', '#38b000', '#00b4d8'];
+        this.audio = new AudioManager();
+
+        this.initAmbientBubbles();
+        this.bindEvents();
+    }
+
+    bindEvents() {
+        document.getElementById('btn-start').addEventListener('click', () => this.startGame());
+        document.getElementById('btn-restart').addEventListener('click', () => this.startGame());
+    }
+
+    initAmbientBubbles() {
+        const container = document.getElementById('ambient-layer');
+        if (!container) return;
+        for(let i=0; i<8; i++) {
+            let el = document.createElement('div');
+            el.className = 'ambient-bubble';
+            let size = Math.random() * 40 + 20;
+            el.style.width = size + 'px';
+            el.style.height = size + 'px';
+            el.style.left = Math.random() * 100 + 'vw';
+            el.style.animationDelay = (Math.random() * 15) + 's';
+            container.appendChild(el);
+        }
     }
 
     startGame() {
+        this.audio.startMusic();
+
         this.score = 0;
-        this.lives = 5;
-        this.spawnRate = 1200;
-        this.speedMultiplier = 1;
-        this.gameActive = true;
-        
-        // Clear existing bubbles visually
-        this.bubbles.forEach(b => b.remove());
-        this.bubbles = [];
-        
+        this.missed = 0;
+        this.level = 1;
+        this.spawnInterval = 1000;
+        this.baseSpeed = 0.2;
         this.updateHUD();
-        document.querySelector('.overlay:not(.hidden)').classList.add('hidden');
+        
+        this.startScreen.classList.add('hidden');
+        this.gameOverScreen.classList.add('hidden');
+        
+        this.bubbles.forEach(b => b.element.remove());
+        this.bubbles = [];
+
+        this.isRunning = true;
+        this.lastFrameTime = performance.now();
+        requestAnimationFrame((t) => this.gameLoop(t));
+    }
+
+    endGame() {
+        this.isRunning = false;
+        this.audio.stopMusic();
+        this.audio.playGameOver();
+        this.finalScore.innerText = this.score;
+        this.gameOverScreen.classList.remove('hidden');
     }
 
     updateHUD() {
-        this.scoreEl.innerText = this.score;
-        this.livesEl.innerHTML = '❤️'.repeat(this.lives);
+        this.uiScore.innerText = this.score;
+        this.uiLevel.innerText = this.level;
+        this.uiMissed.innerText = this.missed;
     }
 
-    spawnBubble() {
-        const size = Math.random() * (80 - 50) + 50;
-        const x = Math.random() * (window.innerWidth - size);
+    createBubble() {
+        const size = Math.random() * 40 + 50; 
+        const x = Math.random() * (100 - (size/window.innerWidth)*100); 
         const color = this.colors[Math.floor(Math.random() * this.colors.length)];
-        const shape = this.shapes[Math.floor(Math.random() * this.shapes.length)];
         
-        let type = 'normal';
-        const rand = Math.random();
-        if (rand > 0.95) type = 'golden';
-        else if (rand > 0.90) type = 'bomb';
+        const bubble = {
+            id: Date.now() + Math.random(),
+            x: x,
+            y: 110, 
+            size: size,
+            speed: this.baseSpeed + (Math.random() * 0.15),
+            element: document.createElement('div')
+        };
 
-        const bubble = new Bubble(x, window.innerHeight, size, color, shape, type, this);
+        bubble.element.className = 'game-bubble';
+        bubble.element.style.width = `${size}px`;
+        bubble.element.style.height = `${size}px`;
+        bubble.element.style.background = `radial-gradient(circle at 30% 30%, rgba(255,255,255,0.4), ${color})`;
+        bubble.element.style.backgroundColor = color;
+        bubble.element.style.left = `${bubble.x}vw`;
+        bubble.element.style.top = `${bubble.y}vh`;
+
+        const popHandler = (e) => {
+            e.preventDefault();
+            this.popBubble(bubble);
+        };
+        bubble.element.addEventListener('mousedown', popHandler);
+        bubble.element.addEventListener('touchstart', popHandler, {passive: false});
+
+        this.stage.appendChild(bubble.element);
         this.bubbles.push(bubble);
     }
 
-    handleGameOver() {
-        this.gameActive = false;
-        this.finalScoreEl.innerText = this.score;
-        document.getElementById('game-over-screen').classList.remove('hidden');
+    popBubble(bubble) {
+        if (!this.bubbles.includes(bubble)) return; 
+        
+        this.audio.playPop();
+
+        this.bubbles = this.bubbles.filter(b => b.id !== bubble.id);
+        
+        bubble.element.classList.add('pop-anim');
+        
+        this.score += 10;
+        if (this.score % 100 === 0) {
+            this.level++;
+            this.spawnInterval = Math.max(300, this.spawnInterval - 100);
+            this.baseSpeed += 0.05;
+        }
+        this.updateHUD();
+
+        setTimeout(() => bubble.element.remove(), 200);
     }
 
-    update(time) {
-        if (this.gameActive) {
-            // Difficulty Scaling
-            if (time - this.lastSpawn > this.spawnRate) {
-                this.spawnBubble();
-                this.lastSpawn = time;
-                this.spawnRate = Math.max(400, this.spawnRate - 5);
-                this.speedMultiplier += 0.001;
-            }
+    missBubble(bubble) {
+        this.bubbles = this.bubbles.filter(b => b.id !== bubble.id);
+        bubble.element.remove();
+        
+        this.missed++;
+        this.updateHUD();
+        
+        if (this.missed >= this.maxMisses) {
+            this.endGame();
+        }
+    }
 
-            // BUG FIX: Reverse loop to safely remove items without skipping
-            for (let i = this.bubbles.length - 1; i >= 0; i--) {
-                const bubble = this.bubbles[i];
-                bubble.move(this.speedMultiplier);
-                
-                // Remove if off screen
-                if (bubble.y + bubble.size < 0) {
-                    if (bubble.type !== 'bomb') {
-                        this.lives--;
-                        this.updateHUD();
-                    }
-                    bubble.remove();
-                    this.bubbles.splice(i, 1);
-                    
-                    if (this.lives <= 0) this.handleGameOver();
-                }
+    gameLoop(currentTime) {
+        if (!this.isRunning) return;
+
+        const deltaTime = currentTime - this.lastFrameTime;
+        this.lastFrameTime = currentTime;
+        this.spawnTimer += deltaTime;
+
+        if (this.spawnTimer >= this.spawnInterval) {
+            this.createBubble();
+            this.spawnTimer = 0;
+        }
+
+        for (let i = this.bubbles.length - 1; i >= 0; i--) {
+            let b = this.bubbles[i];
+            
+            b.y -= b.speed * (deltaTime / 16.66); 
+            b.element.style.transform = `translateY(${b.y - 110}vh)`; 
+
+            if (b.y < -20) { 
+                this.missBubble(b);
             }
         }
-        window.requestAnimationFrame((time) => this.update(time));
+
+        requestAnimationFrame((t) => this.gameLoop(t));
     }
 }
 
-class Bubble {
-    constructor(x, y, size, color, shape, type, game) {
-        this.x = x;
-        this.y = y;
-        this.size = size;
-        this.type = type;
-        this.game = game;
-        this.speed = (Math.random() * 2 + 1);
-        this.popped = false;
-        
-        this.el = document.createElement('div');
-        this.el.className = `bubble ${shape}`;
-        
-        if (type === 'golden') {
-            this.el.style.background = 'radial-gradient(circle at 30% 30%, #fff9ae, #ffb703)';
-            this.el.style.boxShadow = '0 0 15px #ffb703';
-        } else if (type === 'bomb') {
-            this.el.style.background = 'radial-gradient(circle at 30% 30%, #555, #000)';
-            this.el.innerHTML = '💣';
-        } else {
-            this.el.style.background = `radial-gradient(circle at 30% 30%, white, ${color})`;
-        }
-
-        this.el.style.width = `${size}px`;
-        this.el.style.height = `${size}px`;
-        this.el.style.left = `${this.x}px`;
-        this.el.style.top = `${this.y}px`;
-
-        this.el.addEventListener('mousedown', (e) => this.pop(e));
-        this.el.addEventListener('touchstart', (e) => {
-            e.preventDefault();
-            this.pop(e);
-        });
-
-        this.game.stage.appendChild(this.el);
-    }
-
-    move(multiplier) {
-        this.y -= this.speed * multiplier;
-        this.el.style.top = `${this.y}px`;
-    }
-
-    pop(e) {
-        if (this.popped) return;
-        this.popped = true;
-
-        if (this.type === 'bomb') {
-            this.game.lives -= 2;
-        } else if (this.type === 'golden') {
-            this.game.score += 50;
-        } else {
-            this.game.score += 10;
-        }
-
-        this.game.updateHUD();
-        this.el.classList.add('popping');
-        
-        // Remove from the game's array so it stops tracking it
-        const index = this.game.bubbles.indexOf(this);
-        if (index > -1) {
-            this.game.bubbles.splice(index, 1);
-        }
-
-        setTimeout(() => this.remove(), 200);
-    }
-
-    remove() {
-        if (this.el.parentNode) {
-            this.el.parentNode.removeChild(this.el);
-        }
-    }
-}
-
-// Start Engine
-const candyPop = new Game();
+document.addEventListener('DOMContentLoaded', () => {
+    new CandyBubbleGame();
+});
