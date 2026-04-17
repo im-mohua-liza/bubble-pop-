@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Candy Strawberry Bubble Pop</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <div id="game-container">
+        <div class="bg-gradient"></div>
+        <div class="bg-bubbles"></div>
+
+        <div id="hud">
+            <div id="score-board">Score: <span id="score">0</span></div>
+            <div id="lives-board"></div>
+        </div>
+
+        <div id="start-screen" class="overlay">
+            <h1>Candy Strawberry<br><span>Bubble Pop</span></h1>
+            <button id="start-btn">START GAME</button>
+        </div>
+
+        <div id="game-over-screen" class="overlay hidden">
+            <h2>Game Over!</h2>
+            <p>Final Score: <span id="final-score">0</span></p>
+            <button id="restart-btn">PLAY AGAIN</button>
+        </div>
+
+        <div id="stage"></div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
